@@ -1,0 +1,8 @@
+openai
+python-dotenv
+pandas
+websockets 
+sounddevice 
+numpy
+requests
+elevenlabs

@@ -1,0 +1,19 @@
+{
+  "_comment": "Voice configuration for ElevenLabs models. Edit values here and restart server to apply changes.",
+  "eleven_v3": {
+    "_note": "eleven_v3 only supports stability values: 0.0 (Creative), 0.5 (Natural), or 1.0 (Robust)",
+    "stability": 0.5,
+    "similarity_boost": 0.70,
+    "speed": 1,
+    "use_speaker_boost": false,
+    "output_format": "mp3_44100_128"
+  },
+  "eleven_turbo_v2_5": {
+    "_note": "Turbo model supports continuous stability values (0.0 to 1.0)",
+    "stability": 0.70,
+    "similarity_boost": 0.7,
+    "speed": 1,
+    "output_format": "mp3_22050_32"
+  }
+}
+

@@ -1,0 +1,100 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+All colors MUST be HSL.
+*/
+
+@layer base {
+  :root {
+    --background: 220 26% 8%;
+    --foreground: 0 0% 98%;
+
+    --card: 220 20% 12%;
+    --card-foreground: 0 0% 98%;
+
+    --popover: 220 20% 12%;
+    --popover-foreground: 0 0% 98%;
+
+    --primary: 180 100% 50%;
+    --primary-foreground: 220 26% 8%;
+
+    --secondary: 220 15% 20%;
+    --secondary-foreground: 0 0% 98%;
+
+    --muted: 220 15% 18%;
+    --muted-foreground: 0 0% 65%;
+
+    --accent: 280 70% 55%;
+    --accent-foreground: 0 0% 98%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 220 15% 20%;
+    --input: 220 15% 20%;
+    --ring: 180 100% 50%;
+
+    --radius: 0.75rem;
+
+    /* Streaming theme colors */
+    --stream-gradient-start: 210 100% 45%;
+    --stream-gradient-mid: 180 100% 50%;
+    --stream-gradient-end: 170 80% 45%;
+    
+    --chat-bubble: 220 20% 15%;
+    --chat-bubble-user: 220 15% 18%;
+    
+    --stage-overlay: 220 20% 12%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+}
+
+@layer utilities {
+  .text-gradient {
+    @apply bg-gradient-to-r from-[hsl(var(--stream-gradient-start))] via-[hsl(var(--stream-gradient-mid))] to-[hsl(var(--stream-gradient-end))] bg-clip-text text-transparent;
+  }
+  
+  .bg-gradient-stream {
+    @apply bg-gradient-to-br from-[hsl(var(--stream-gradient-start))] via-[hsl(var(--stream-gradient-mid))] to-[hsl(var(--stream-gradient-end))];
+  }
+  
+  .animate-token {
+    animation: tokenFade 0.3s ease-in;
+  }
+  
+  @keyframes tokenFade {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: hsl(var(--muted));
+    border-radius: 10px;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: hsl(var(--primary));
+    border-radius: 10px;
+  }
+}
