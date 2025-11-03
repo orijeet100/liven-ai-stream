@@ -107,12 +107,31 @@ let previousWindows: string[] = [];
 
 function loadCSVOnce() {
   if (csvData.length > 0) return;
-  const csvPath = path.resolve(process.cwd(), "data_stream_regular.csv");
-  if (!fs.existsSync(csvPath)) {
-    console.warn(`CSV not found at ${csvPath}`);
+  // Try multiple possible paths - prefer server/data first
+  const possiblePaths = [
+    path.join(__dirname, "data", "data_stream_regular.csv"), // server/data/ (preferred)
+    path.resolve(__dirname, "..", "data_stream_regular.csv"), // root directory
+    path.resolve(process.cwd(), "data_stream_regular.csv"), // current working directory
+    path.resolve(process.cwd(), "server", "data", "data_stream_regular.csv"), // fallback
+  ];
+  
+  let csvPath: string | null = null;
+  for (const testPath of possiblePaths) {
+    if (fs.existsSync(testPath)) {
+      csvPath = testPath;
+      break;
+    }
+  }
+  
+  if (!csvPath) {
+    console.warn(`CSV not found. Tried: ${possiblePaths.join(", ")}`);
+    console.warn(`Current working directory: ${process.cwd()}`);
+    console.warn(`__dirname: ${__dirname}`);
     csvData = [];
     return;
   }
+  
+  console.log(`Loading CSV from: ${csvPath}`);
   const text = fs.readFileSync(csvPath, "utf-8").trim();
   const lines = text.split(/\r?\n/);
   const headers = lines[0].split(",");
