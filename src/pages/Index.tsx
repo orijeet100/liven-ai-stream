@@ -6,9 +6,23 @@ import { StageBackground } from "@/components/StageBackground";
 import { ChatMessageData } from "@/components/ChatMessage";
 import { toast } from "@/hooks/use-toast";
 
-const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:5174' : '');
+const getApiUrl = () => {
+  const envUrl = import.meta.env.VITE_API_URL;
+  if (envUrl) {
+    // Ensure it has protocol
+    if (envUrl.startsWith('http://') || envUrl.startsWith('https://')) {
+      return envUrl;
+    }
+    return `https://${envUrl}`;
+  }
+  return import.meta.env.DEV ? 'http://localhost:5174' : '';
+};
+
+const API_URL = getApiUrl();
 if (!API_URL && import.meta.env.PROD) {
   console.error('VITE_API_URL is not set! API calls will fail.');
+} else if (import.meta.env.PROD) {
+  console.log('API_URL configured:', API_URL);
 }
 
 const Index = () => {
@@ -131,7 +145,7 @@ const Index = () => {
     }
     prefetchingRef.current = true;
     try {
-      const url = `/api/llm-generate?start=${start}&voiceModel=${encodeURIComponent(model)}&topic=${encodeURIComponent(topic)}`;
+      const url = `${API_URL}/api/llm-generate?start=${start}&voiceModel=${encodeURIComponent(model)}&topic=${encodeURIComponent(topic)}`;
       const resp = await fetch(url);
       if (!resp.ok) throw new Error(`LLM error ${resp.status}`);
       const data = await resp.json();
