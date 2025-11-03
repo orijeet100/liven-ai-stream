@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "start": "npm run server:ts",
     "server": "node ./server/server.js",
     "server:ts": "tsx ./server/server.ts",
     "dev:full": "concurrently \"vite\" \"tsx ./server/server.ts\"",
@@ -68,7 +69,8 @@
     "tailwind-merge": "^2.6.0",
     "tailwindcss-animate": "^1.0.7",
     "vaul": "^0.9.9",
-    "zod": "^3.25.76"
+    "zod": "^3.25.76",
+    "tsx": "^4.19.2"
   },
   "devDependencies": {
     "@eslint/js": "^9.32.0",
@@ -85,7 +87,6 @@
     "lovable-tagger": "^1.1.11",
     "postcss": "^8.5.6",
     "tailwindcss": "^3.4.17",
-    "tsx": "^4.19.2",
     "concurrently": "^9.1.2",
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.38.0",
