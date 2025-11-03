@@ -7,6 +7,9 @@ import { ChatMessageData } from "@/components/ChatMessage";
 import { toast } from "@/hooks/use-toast";
 
 const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:5174' : '');
+if (!API_URL && import.meta.env.PROD) {
+  console.error('VITE_API_URL is not set! API calls will fail.');
+}
 
 const Index = () => {
   const [running, setRunning] = useState(false);
@@ -337,7 +340,7 @@ const Index = () => {
   };
 
   const playTTS = async (text: string, voiceId: string) => {
-    const resp = await fetch('http://localhost:5174/api/tts', {
+    const resp = await fetch(`${API_URL}/api/tts`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text, voiceId })
@@ -364,7 +367,7 @@ const Index = () => {
   };
 
   const playOpeningTTS = async (text: string, voiceId: string, model: string) => {
-    const resp = await fetch('http://localhost:5174/api/tts', {
+    const resp = await fetch(`${API_URL}/api/tts`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text, voiceId, model_id: model })
