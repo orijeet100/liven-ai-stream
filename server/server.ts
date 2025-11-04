@@ -154,7 +154,7 @@ function getWindow(start: number, windowSize = 4) {
   );
 }
 
-function getLast3PerUser(beforeTime: number) {
+function getLast1PerUser(beforeTime: number) {
   const userMessages: Record<string, string[]> = {};
   csvData
     .filter((row) => row.time_counter < beforeTime)
@@ -164,8 +164,10 @@ function getLast3PerUser(beforeTime: number) {
     });
   const result: string[] = [];
   Object.entries(userMessages).forEach(([user, messages]) => {
-    const last3 = messages.slice(-3);
-    result.push(`${user}: ${last3.join("; ")}`);
+    const last1 = messages.slice(-1);
+    if (last1.length > 0) {
+      result.push(`${user}: ${last1[0]}`);
+    }
   });
   return result.join("\n");
 }
@@ -197,7 +199,8 @@ AUDIO-TAG RULES
     return `${basePersona}
 ${audioTagsSection}
 ${styleSection}
-- Output ONLY the final spoken line(s); no meta text, no brackets except audio tags.`;
+- Output ONLY the final spoken line(s); no meta text, no brackets except audio tags.
+- IMPORTANT: Place audio tags ONLY at the END of your final response, otherwise they will be cropped.`;
   } else {
     // eleven_turbo_v2_5 - no audio tags
     return `${basePersona}
@@ -206,14 +209,38 @@ ${styleSection}
   }
 }
 
-function buildUserPrompt(topic: string, currentWindow: ChatRow[]) {
+function buildUserPrompt(topic: string, currentWindow: ChatRow[], currentStart: number) {
   const prevAI = previousAIReplies.slice(-2).join("\n") || "(none yet)";
   const prevWindowsText = previousWindows.slice(-2).join("\n\n") || "(none yet)";
-  const perUserLast3 = getLast3PerUser(currentWindow[0]?.time_counter ?? 1);
+  const perUserLast1 = getLast1PerUser(currentWindow[0]?.time_counter ?? 1);
   const currentWindowText = currentWindow
     .map((m) => `${m.username}: ${m.message}`)
     .join("\n");
-  return `You are mid-stream. Use prior context ONLY for continuity—your answer must be driven by the CURRENT WINDOW.
+  
+  // Check if previous window was also empty
+  const prevWindow = getWindow(Math.max(1, currentStart - 4), 4);
+  const prevWindowWasEmpty = prevWindow.length === 0;
+  const currentWindowIsEmpty = currentWindow.length === 0;
+  const hasMoreThan7Messages = currentWindow.length > 7;
+  
+  let specialInstructions = "";
+  
+  if (currentWindowIsEmpty) {
+    specialInstructions = `\n\nSPECIAL: The current window has NO messages. Make a witty pun related to being lonely in the chat, asking where everyone went, and continue talking about ${topic} to keep the stream going. Be humorous and light-hearted about the empty chat.`;
+  } else if (hasMoreThan7Messages) {
+    specialInstructions = `\n\nSPECIAL: There are ${currentWindow.length} messages in this window (over 7). Make a witty pun about the chat being super crazy and the topic (${topic}). The ENTIRE response must be 1-2 sentence max with a bit of humourour pun - no responding to individual messages.`;
+  }
+  
+  let windowContext = "";
+  if (currentWindowIsEmpty) {
+    windowContext = "(CURRENT WINDOW IS EMPTY - no new messages)";
+  } else {
+    windowContext = `CURRENT LIVE CHAT WINDOW (respond to THESE now; avoid repeating already-covered points):\n${currentWindowText}`;
+  }
+  
+  return `You are hosting a livestream about: **${topic}**
+
+Use prior context ONLY for continuity—your answer must be driven by the CURRENT WINDOW.
 
 Previous AI replies (last 2):
 ${prevAI}
@@ -221,19 +248,19 @@ ${prevAI}
 Recent chat windows (last 2):
 ${prevWindowsText}
 
-Recent 3 messages per user (memory):
-${perUserLast3 || "(n/a)"}
+Previous 1 message per user (acknowledge if they asked questions twice):
+${perUserLast1 || "(n/a)"}
 
-CURRENT LIVE CHAT WINDOW (respond to THESE now; avoid repeating already-covered points):
-${currentWindowText}
+${windowContext}
 
-Now reply in 1-2 sentences, conversational, flowing naturally from prior replies if related.`;
+Now reply in a SHORT and WITTY manner (1-2 sentences max). Keep responses focused on the topic: ${topic}.${specialInstructions}
+- Acknowledge users by name if they're asking questions again or engaging multiple times.`;
 }
 
 app.get("/api/llm-stream", async (req, res) => {
-  const XAI_API_KEY = process.env.XAI_API_KEY;
-  if (!XAI_API_KEY) {
-    return res.status(500).json({ error: "XAI_API_KEY not configured" });
+  const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+  if (!OPENAI_API_KEY) {
+    return res.status(500).json({ error: "OPENAI_API_KEY not configured" });
   }
   loadCSVOnce();
   const start = parseInt((req.query.start as string) || "1", 10);
@@ -258,18 +285,18 @@ app.get("/api/llm-stream", async (req, res) => {
   // send window first
   sendEvent("window", JSON.stringify(currentWindow));
 
-  const userPrompt = buildUserPrompt(topic, currentWindow);
+  const userPrompt = buildUserPrompt(topic, currentWindow, start);
   const voiceModel = (req.query.voiceModel as string) || "eleven_turbo_v2_5";
   const systemPersona = getSystemPersona(voiceModel);
   try {
-    const response = await fetch("https://api.x.ai/v1/chat/completions", {
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${XAI_API_KEY}`,
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "grok-4-fast-non-reasoning",
+        model: "gpt-4o",
         messages: [
           { role: "system", content: systemPersona },
           { role: "user", content: userPrompt },
@@ -314,11 +341,7 @@ app.get("/api/llm-stream", async (req, res) => {
       // ignore mid-stream errors and close
     }
 
-    const sentences = fullText
-      .split(/[.!?]+/)
-      .filter((s) => s.trim())
-      .slice(0, 3);
-    const finalText = sentences.join(". ").trim() + (sentences.length > 0 ? "." : "");
+    const finalText = fullText.trim();
     sendEvent("final", finalText);
 
     previousAIReplies.push(finalText);
@@ -337,30 +360,31 @@ app.get("/api/llm-stream", async (req, res) => {
 });
 
 app.get("/api/llm-generate", async (req, res) => {
-  const XAI_API_KEY = process.env.XAI_API_KEY;
-  if (!XAI_API_KEY) {
-    return res.status(500).json({ error: "XAI_API_KEY not configured" });
+  const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+  if (!OPENAI_API_KEY) {
+    return res.status(500).json({ error: "OPENAI_API_KEY not configured" });
   }
   loadCSVOnce();
   const start = parseInt((req.query.start as string) || "1", 10);
   const topic = (req.query.topic as string) || "Exploring AI Streamers & Agent Personalities";
   const voiceModel = (req.query.voiceModel as string) || "eleven_turbo_v2_5";
   const currentWindow = getWindow(start);
-  if (currentWindow.length === 0) {
-    return res.json({ window: [], finalText: "" });
-  }
-
-  const userPrompt = buildUserPrompt(topic, currentWindow);
+  // Always generate a response, even for empty windows (will get funny lonely pun)
+  const userPrompt = buildUserPrompt(topic, currentWindow, start);
+  
+  // Check if there are more windows to process
+  const nextStart = start + 4;
+  const hasMoreWindows = csvData.some(row => row.time_counter >= nextStart);
   const systemPersona = getSystemPersona(voiceModel);
   try {
-    const response = await fetch("https://api.x.ai/v1/chat/completions", {
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${XAI_API_KEY}`,
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "grok-4-fast-non-reasoning",
+        model: "gpt-4o",
         messages: [
           { role: "system", content: systemPersona },
           { role: "user", content: userPrompt },
@@ -371,13 +395,10 @@ app.get("/api/llm-generate", async (req, res) => {
     });
     if (!response.ok) {
       const errorText = await response.text();
-      return res.status(500).json({ error: `xAI error ${response.status}: ${errorText}` });
+      return res.status(500).json({ error: `OpenAI error ${response.status}: ${errorText}` });
     }
     const json = await response.json();
-    const full = json?.choices?.[0]?.message?.content?.trim() || "";
-    // Trim to <= 3 sentences for safety
-    const sentences = full.split(/[.!?]+/).filter((s: string) => s.trim()).slice(0, 3);
-    const finalText = sentences.join('. ').trim() + (sentences.length > 0 ? '.' : '');
+    const finalText = json?.choices?.[0]?.message?.content?.trim() || "";
 
     // Update memory
     previousAIReplies.push(finalText);
@@ -386,7 +407,7 @@ app.get("/api/llm-generate", async (req, res) => {
     previousWindows.push(windowText);
     if (previousWindows.length > 2) previousWindows.shift();
 
-    return res.json({ window: currentWindow, finalText });
+    return res.json({ window: currentWindow, finalText, hasMoreWindows });
   } catch (e) {
     return res.status(500).json({ error: (e as Error).message });
   }

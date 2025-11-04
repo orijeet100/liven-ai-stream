@@ -30,21 +30,22 @@ const Index = () => {
   const [windowStart, setWindowStart] = useState(1);
   const [voiceModel, setVoiceModel] = useState("eleven_turbo_v2_5");
   const [voiceId, setVoiceId] = useState("1SM7GgM6IMuvQlz2BwM3");
-  const [speakEnabled, setSpeakEnabled] = useState(true);
-  const [topic, setTopic] = useState("Exploring AI Streamers & Agent Personalities");
+  const [topic, setTopic] = useState("Italian Food");
   
   const [streamText, setStreamText] = useState("");
   const [chatMessages, setChatMessages] = useState<ChatMessageData[]>([]);
   const [windowInfo, setWindowInfo] = useState("Ready");
   const [countdown, setCountdown] = useState<number | null>(null);
   const [openingText, setOpeningText] = useState("");
+  const [isVideoPlaying, setIsVideoPlaying] = useState(false);
   
   const processingRef = useRef(false);
   const runningRef = useRef(false);
-  const prefetchRef = useRef<{ start: number; window: ChatMessageData[]; finalText: string; audioUrl?: string | null } | null>(null);
+  const prefetchRef = useRef<{ start: number; window: ChatMessageData[]; finalText: string; audioUrl?: string | null; hasMoreWindows?: boolean } | null>(null);
   const prefetchingRef = useRef(false);
   const countdownRef = useRef<number>(0);
   const openingAudioUrlRef = useRef<string | null>(null);
+  const currentAudioRef = useRef<HTMLAudioElement | null>(null);
   
   useEffect(() => {
     setStreamText("");
@@ -72,27 +73,25 @@ const Index = () => {
     void (async () => {
       try {
         const opening = voiceModel === 'eleven_v3' 
-          ? "[Excited] Hi this liven your AI livestreaming host, ready to take the day. [Chuckles] Hope you're having a great day lovely folks!"
-          : "Hi this liven your AI livestreaming host, ready to take the day. Hope you're having a great day lovely folks!";
+          ? "[Excited] Hi this is liven your AI livestreaming host, ready to take the day. [Chuckles] Hope you're having a great day lovely folks! [Cheerfully] If not, don't worry. I am here. "
+          : "Hi this is liven your AI livestreaming host, ready to take the day. Hope you're having a great day folks!";
         // Begin prefetching opening audio immediately so it's instant after countdown
         let openingPrefetchPromise: Promise<void> | null = null;
-        if (speakEnabled) {
-          openingPrefetchPromise = (async () => {
-            try {
-              const resp = await fetch(`${API_URL}/api/tts`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ text: opening, voiceId, model_id: voiceModel })
-              });
-              if (resp.ok) {
-                const blob = await resp.blob();
-                openingAudioUrlRef.current = URL.createObjectURL(blob);
-              }
-            } catch (e: any) {
-              console.error('Opening audio prefetch error:', e.message || e);
+        openingPrefetchPromise = (async () => {
+          try {
+            const resp = await fetch(`${API_URL}/api/tts`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ text: opening, voiceId, model_id: voiceModel })
+            });
+            if (resp.ok) {
+              const blob = await resp.blob();
+              openingAudioUrlRef.current = URL.createObjectURL(blob);
             }
-          })();
-        }
+          } catch (e: any) {
+            console.error('Opening audio prefetch error:', e.message || e);
+          }
+        })();
         // Start countdown UI and wait for it to complete
         await (async () => {
           while (runningRef.current && countdownRef.current > 0) {
@@ -104,23 +103,23 @@ const Index = () => {
         })();
 
         // For v3, wait for prefetch to complete before playing (v3 takes longer)
-        if (speakEnabled && voiceModel === 'eleven_v3' && openingPrefetchPromise) {
+        if (voiceModel === 'eleven_v3' && openingPrefetchPromise) {
           await openingPrefetchPromise;
         }
 
         // Wait for countdown to fully finish before starting audio
         // Play prefetched opening audio instantly if available
-        if (speakEnabled) {
-          if (openingAudioUrlRef.current) {
-            setOpeningText(opening);
-            await playAudioUrl(openingAudioUrlRef.current);
-            try { URL.revokeObjectURL(openingAudioUrlRef.current); } catch {}
-            openingAudioUrlRef.current = null;
-            setOpeningText("");
-          } else {
-            // fallback if prefetch failed
-            await playOpeningTTS(opening, voiceId, voiceModel);
-          }
+        if (!runningRef.current) return;
+        setIsVideoPlaying(true); // Start video when opening audio begins
+        if (openingAudioUrlRef.current) {
+          setOpeningText(opening);
+          await playAudioUrl(openingAudioUrlRef.current);
+          try { URL.revokeObjectURL(openingAudioUrlRef.current); } catch {}
+          openingAudioUrlRef.current = null;
+          setOpeningText("");
+        } else {
+          // fallback if prefetch failed
+          await playOpeningTTS(opening, voiceId, voiceModel);
         }
         if (!runningRef.current) return;
         processingRef.current = false;
@@ -132,11 +131,36 @@ const Index = () => {
   };
   
   const stopSimulation = () => {
+    // Stop all audio playback
+    if (currentAudioRef.current) {
+      currentAudioRef.current.pause();
+      currentAudioRef.current.currentTime = 0;
+      currentAudioRef.current = null;
+    }
+    
+    // Stop all running processes
     setRunning(false);
     runningRef.current = false;
-    setWindowInfo("Stopped");
+    processingRef.current = false;
+    
+    // Clear all state and reset to initial
+    setWindowStart(1);
+    setChatMessages([]);
+    setStreamText("");
+    setWindowInfo("Ready");
     setCountdown(null);
     setOpeningText("");
+    setIsVideoPlaying(false); // Stop video
+    
+    // Clear prefetch
+    prefetchRef.current = null;
+    prefetchingRef.current = false;
+    
+    // Clean up audio URLs
+    if (openingAudioUrlRef.current) {
+      try { URL.revokeObjectURL(openingAudioUrlRef.current); } catch {}
+      openingAudioUrlRef.current = null;
+    }
   };
   
   const prefetchWindow = async (start: number, model: string = voiceModel) => {
@@ -173,6 +197,7 @@ const Index = () => {
         window: Array.isArray(data.window) ? data.window : [],
         finalText: data.finalText || "",
         audioUrl,
+        hasMoreWindows: data.hasMoreWindows !== false, // Default to true if not specified
       };
     } catch (e: any) {
       console.error('Prefetch error:', e);
@@ -234,8 +259,8 @@ const Index = () => {
         void (async () => {
           try {
             const opening = voiceModel === 'eleven_v3'
-              ? "[Excited] Hi this liven your AI livestreaming host, ready to take the day. [Chuckles] Hope you're having a great day lovely folks!"
-              : "Hi this liven your AI livestreaming host, ready to take the day. Hope you're having a great day lovely folks!";
+              ? "[Excited] Hi this is liven your AI livestreaming host, ready to take the day. [Chuckles] Hope you're having a great day lovely folks!"
+              : "Hi this is liven your AI livestreaming host, ready to take the day. Hope you're having a great day lovely folks!";
             // Wait for countdown to complete first
             await (async () => {
               while (runningRef.current && countdownRef.current > 0) {
@@ -246,9 +271,8 @@ const Index = () => {
               setCountdown(null);
             })();
             // Now start TTS (text appears exactly when audio starts)
-            if (speakEnabled) {
-              await playOpeningTTS(opening, voiceId, voiceModel);
-            }
+            setIsVideoPlaying(true); // Start video when opening audio begins
+            await playOpeningTTS(opening, voiceId, voiceModel);
             if (!runningRef.current) return;
             processingRef.current = false;
             await runLoop(1, voiceModel);
@@ -267,10 +291,10 @@ const Index = () => {
       const nextStart = start + 4;
       void prefetchWindow(nextStart, model);
 
-      // Only speak if we have text and it's enabled
-      if (speakEnabled && buf.finalText && buf.finalText.trim()) {
+      // Only speak if we have text
+      if (buf.finalText && buf.finalText.trim()) {
         await playTTSStream(buf.finalText, voiceId, model, buf.audioUrl || null);
-      } else if (!buf.finalText || !buf.finalText.trim()) {
+      } else {
         // No text to speak - wait a moment before advancing to avoid rapid-fire
         await new Promise(r => setTimeout(r, 1500));
       }
@@ -309,19 +333,67 @@ const Index = () => {
         const buf = prefetchRef.current;
         if (!buf || buf.start !== current) throw new Error('Missing prefetched data');
 
-        if (!buf.window.length && !buf.finalText) {
+        const nextStart = current + 4;
+        
+        // Check if there are more windows to process
+        const hasMoreWindows = buf.hasMoreWindows !== false; // Default to true for backwards compatibility
+        
+        // If no more windows, process this final response and then stop
+        if (!hasMoreWindows) {
+          // Process the final response if it exists
+          if (buf.finalText && buf.finalText.trim()) {
+            // Start displaying chat messages one by one (non-blocking, in parallel)
+            if (buf.window.length) {
+              void (async () => {
+                for (let i = 0; i < buf.window.length; i++) {
+                  await new Promise(r => setTimeout(r, 500)); // 0.5 second gap
+                  if (!runningRef.current) break;
+                  setChatMessages(prev => [...prev, buf.window[i]]);
+                }
+              })();
+            }
+            
+            // Set text and play final response
+            setStreamText(buf.finalText || "");
+            await playTTSStream(buf.finalText, voiceId, model, buf.audioUrl || null);
+          }
+          
+          // All data processed - stop video, clear chat, and return to gradient
+          setIsVideoPlaying(false);
+          setChatMessages([]);
+          setStreamText("");
+          setWindowInfo("Ready");
+          setRunning(false);
+          runningRef.current = false;
           break;
         }
+        
+        // If window is empty but we have a response (lonely pun) and more windows, still process it
+        // If there's no finalText but more windows, continue to next window
+        if (!buf.finalText && hasMoreWindows) {
+          current = nextStart;
+          continue;
+        }
 
-        if (buf.window.length) setChatMessages(prev => [...prev, ...buf.window]);
+        // Start displaying chat messages one by one (non-blocking, in parallel)
+        if (buf.window.length) {
+          void (async () => {
+            for (let i = 0; i < buf.window.length; i++) {
+              await new Promise(r => setTimeout(r, 500)); // 0.5 second gap
+              if (!runningRef.current) break;
+              setChatMessages(prev => [...prev, buf.window[i]]);
+            }
+          })();
+        }
+        
+        // Set text and start speaking immediately (don't wait for chat messages to finish displaying)
         setStreamText(buf.finalText || "");
 
-        const nextStart = current + 4;
         void prefetchWindow(nextStart, model);
 
-        if (speakEnabled && buf.finalText && buf.finalText.trim()) {
+        if (buf.finalText && buf.finalText.trim()) {
           await playTTSStream(buf.finalText, voiceId, model, buf.audioUrl || null);
-        } else if (!buf.finalText || !buf.finalText.trim()) {
+        } else {
           await new Promise(r => setTimeout(r, 1500));
         }
 
@@ -335,6 +407,7 @@ const Index = () => {
       toast({ title: 'Error', description: e.message || 'Processing failed', variant: 'destructive' });
       setRunning(false);
       runningRef.current = false;
+      setIsVideoPlaying(false); // Stop video on error
     } finally {
       processingRef.current = false;
     }
@@ -342,14 +415,25 @@ const Index = () => {
 
   const playAudioUrl = async (url: string) => {
     const audio = new Audio(url);
+    currentAudioRef.current = audio;
     const started = await waitForPlay(audio, 1200);
     if (!started) {
       // try a direct play once more
       try { await audio.play(); } catch {}
     }
     await new Promise<void>((resolve) => {
-      audio.onended = () => resolve();
-      audio.onerror = () => resolve();
+      audio.onended = () => {
+        if (currentAudioRef.current === audio) {
+          currentAudioRef.current = null;
+        }
+        resolve();
+      };
+      audio.onerror = () => {
+        if (currentAudioRef.current === audio) {
+          currentAudioRef.current = null;
+        }
+        resolve();
+      };
     });
   };
 
@@ -365,17 +449,31 @@ const Index = () => {
     }
     const blob = await resp.blob();
     const url = URL.createObjectURL(blob);
+    const audio = new Audio(url);
     try {
-      const audio = new Audio(url);
+      currentAudioRef.current = audio;
       const started = await waitForPlay(audio, 1200);
       if (!started) {
         try { await audio.play(); } catch {}
       }
       await new Promise<void>((resolve) => {
-        audio.onended = () => resolve();
-        audio.onerror = () => resolve();
+        audio.onended = () => {
+          if (currentAudioRef.current === audio) {
+            currentAudioRef.current = null;
+          }
+          resolve();
+        };
+        audio.onerror = () => {
+          if (currentAudioRef.current === audio) {
+            currentAudioRef.current = null;
+          }
+          resolve();
+        };
       });
     } finally {
+      if (currentAudioRef.current === audio) {
+        currentAudioRef.current = null;
+      }
       URL.revokeObjectURL(url);
     }
   };
@@ -392,18 +490,32 @@ const Index = () => {
     }
     const blob = await resp.blob();
     const url = URL.createObjectURL(blob);
+    const audio = new Audio(url);
     try {
-      const audio = new Audio(url);
+      currentAudioRef.current = audio;
       setOpeningText(text); // show only when we are about to start playback
       const started = await waitForPlay(audio, 1200);
       if (!started) {
         try { await audio.play(); } catch {}
       }
       await new Promise<void>((resolve) => {
-        audio.onended = () => resolve();
-        audio.onerror = () => resolve();
+        audio.onended = () => {
+          if (currentAudioRef.current === audio) {
+            currentAudioRef.current = null;
+          }
+          resolve();
+        };
+        audio.onerror = () => {
+          if (currentAudioRef.current === audio) {
+            currentAudioRef.current = null;
+          }
+          resolve();
+        };
       });
     } finally {
+      if (currentAudioRef.current === audio) {
+        currentAudioRef.current = null;
+      }
       setOpeningText("");
       URL.revokeObjectURL(url);
     }
@@ -415,16 +527,23 @@ const Index = () => {
     // For eleven_v3, use prefetched audio buffer
     if (model === 'eleven_v3' && prefetchedAudioUrl) {
       const audio = new Audio(prefetchedAudioUrl);
+      currentAudioRef.current = audio;
       const started = await waitForPlay(audio, 1200);
       if (!started) {
         try { await audio.play(); } catch {}
       }
       await new Promise<void>((resolve) => {
         audio.onended = () => {
+          if (currentAudioRef.current === audio) {
+            currentAudioRef.current = null;
+          }
           URL.revokeObjectURL(prefetchedAudioUrl);
           resolve();
         };
         audio.onerror = () => {
+          if (currentAudioRef.current === audio) {
+            currentAudioRef.current = null;
+          }
           URL.revokeObjectURL(prefetchedAudioUrl);
           resolve();
         };
@@ -436,11 +555,22 @@ const Index = () => {
     await new Promise<void>((resolve) => {
       const params = new URLSearchParams({ text, voiceId, model_id: model, output_format: 'mp3_22050_32' });
       const audio = new Audio(`${API_URL}/api/tts-play?${params.toString()}`);
+      currentAudioRef.current = audio;
       audio.onloadeddata = () => {
         audio.play().catch(() => {});
       };
-      audio.onended = () => resolve();
-      audio.onerror = () => resolve();
+      audio.onended = () => {
+        if (currentAudioRef.current === audio) {
+          currentAudioRef.current = null;
+        }
+        resolve();
+      };
+      audio.onerror = () => {
+        if (currentAudioRef.current === audio) {
+          currentAudioRef.current = null;
+        }
+        resolve();
+      };
       // Fallback kick if onloadeddata not firing quickly
       setTimeout(() => { if (audio.paused) { audio.play().catch(() => {}); } }, 200);
     });
@@ -467,8 +597,6 @@ const Index = () => {
         onVoiceModelChange={setVoiceModel}
         voiceId={voiceId}
         onVoiceIdChange={setVoiceId}
-        speakEnabled={speakEnabled}
-        onSpeakToggle={setSpeakEnabled}
         topic={topic}
         onTopicChange={setTopic}
         windowInfo={windowInfo}
@@ -477,7 +605,7 @@ const Index = () => {
       <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
         {/* Stage - Left Panel */}
         <div className="flex-1 relative overflow-hidden">
-          <StageBackground windowStart={windowStart} />
+          <StageBackground windowStart={windowStart} isVideoPlaying={isVideoPlaying} />
           {countdown !== null ? (
             <div className="absolute inset-0 flex items-center justify-center z-50">
               <div className="text-white text-9xl font-bold drop-shadow-2xl">{countdown}</div>

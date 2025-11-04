@@ -1,7 +1,6 @@
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
-import { Switch } from "./ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Play, Square } from "lucide-react";
 
@@ -12,8 +11,6 @@ interface TopBarProps {
   onVoiceModelChange: (voiceModel: string) => void;
   voiceId: string;
   onVoiceIdChange: (voiceId: string) => void;
-  speakEnabled: boolean;
-  onSpeakToggle: (enabled: boolean) => void;
   topic: string;
   onTopicChange: (topic: string) => void;
   windowInfo: string;
@@ -26,8 +23,6 @@ export const TopBar = ({
   onVoiceModelChange,
   voiceId,
   onVoiceIdChange,
-  speakEnabled,
-  onSpeakToggle,
   topic,
   onTopicChange,
   windowInfo,
@@ -88,15 +83,6 @@ export const TopBar = ({
             className="w-[200px] h-8 text-xs"
             placeholder="Stream topic..."
           />
-        </div>
-        
-        <div className="flex items-center gap-2">
-          <Switch
-            id="speak"
-            checked={speakEnabled}
-            onCheckedChange={onSpeakToggle}
-          />
-          <Label htmlFor="speak" className="text-xs">Speak responses</Label>
         </div>
         
         <div className="ml-auto text-xs text-muted-foreground">
