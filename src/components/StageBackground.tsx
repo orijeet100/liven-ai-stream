@@ -27,7 +27,7 @@ export const StageBackground = ({ windowStart, isVideoPlaying }: StageBackground
       <div className="absolute inset-0">
         <video
           ref={videoRef}
-          src="/public/liven_video.mp4"
+          src="/liven_video.mp4"
           className="absolute inset-0 w-full h-full object-contain"
           loop
           muted
