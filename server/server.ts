@@ -172,6 +172,22 @@ function getLast1PerUser(beforeTime: number) {
   return result.join("\n");
 }
 
+function getReturningUsers(currentWindow: ChatRow[], currentStart: number): string[] {
+  // Get all users who appeared before the current window
+  const previousUsers = new Set<string>();
+  csvData
+    .filter((row) => row.time_counter < currentStart)
+    .forEach((row) => {
+      previousUsers.add(row.username);
+    });
+  
+  // Find users in current window who appeared before
+  const currentUsers = new Set(currentWindow.map(row => row.username));
+  const returningUsers = Array.from(currentUsers).filter(user => previousUsers.has(user));
+  
+  return returningUsers;
+}
+
 function getSystemPersona(voiceModel: string) {
   const basePersona = `You are **Liven**, a warm, lightly humorous livestream host.
 
@@ -223,12 +239,17 @@ function buildUserPrompt(topic: string, currentWindow: ChatRow[], currentStart: 
   const currentWindowIsEmpty = currentWindow.length === 0;
   const hasMoreThan7Messages = currentWindow.length > 7;
   
+  // Check for returning users
+  const returningUsers = getReturningUsers(currentWindow, currentStart);
+  
   let specialInstructions = "";
   
   if (currentWindowIsEmpty) {
     specialInstructions = `\n\nSPECIAL: The current window has NO messages. Make a witty pun related to being lonely in the chat, asking where everyone went, and continue talking about ${topic} to keep the stream going. Be humorous and light-hearted about the empty chat.`;
   } else if (hasMoreThan7Messages) {
     specialInstructions = `\n\nSPECIAL: There are ${currentWindow.length} messages in this window (over 7). Make a witty pun about the chat being super crazy and the topic (${topic}). The ENTIRE response must be 1-2 sentence max with a bit of humourour pun - no responding to individual messages.`;
+  } else if (returningUsers.length > 0) {
+    specialInstructions = `\n\nSPECIAL: The following users have re-appeared in the chat: ${returningUsers.join(", ")}. Make a subtle hint or witty pun acknowledging their return (e.g., "welcome back", "nice to see you again", or a playful pun about them coming back). Keep it brief and natural.`;
   }
   
   let windowContext = "";
@@ -254,6 +275,7 @@ ${perUserLast1 || "(n/a)"}
 ${windowContext}
 
 Now reply in a SHORT and WITTY manner (1-2 sentences max). Keep responses focused on the topic: ${topic}.${specialInstructions}
+${returningUsers.length > 0 && !hasMoreThan7Messages && !currentWindowIsEmpty ? `\n- IMPORTANT: The following users have re-appeared: ${returningUsers.join(", ")}. Make a subtle hint or witty pun acknowledging their return naturally in your response.` : ''}
 - Acknowledge users by name if they're asking questions again or engaging multiple times.`;
 }
 
