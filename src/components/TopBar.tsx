@@ -68,13 +68,13 @@ export const TopBar = ({
             id="voice"
             value={voiceId}
             onChange={(e) => onVoiceIdChange(e.target.value)}
-            disabled={running}
+            disabled={true}
             className="w-[180px] h-8 text-xs font-mono"
           />
         </div>
         
         <div className="flex items-center gap-2">
-          <Label htmlFor="topic" className="text-xs">Topic</Label>
+          <Label htmlFor="topic" className="text-xs">Theme</Label>
           <Input
             id="topic"
             value={topic}
